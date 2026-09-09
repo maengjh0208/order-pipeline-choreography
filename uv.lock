@@ -5,7 +5,6 @@ requires-python = ">=3.12"
 [manifest]
 members = [
     "order-pipeline-choreography",
-    "order-query-service",
     "order-service",
     "pipeline-kafka",
 ]
@@ -742,33 +741,6 @@ dev = [
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
     { name = "ruff", specifier = ">=0.16.6" },
-]
-
-[[package]]
-name = "order-query-service"
-version = "0.1.0"
-source = { editable = "services/order-query-service" }
-dependencies = [
-    { name = "alembic" },
-    { name = "asyncpg" },
-    { name = "fastapi" },
-    { name = "opentelemetry-instrumentation-fastapi" },
-    { name = "pipeline-kafka" },
-    { name = "pydantic-settings" },
-    { name = "sqlalchemy", extra = ["asyncio"] },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "alembic", specifier = ">=1.19.2" },
-    { name = "asyncpg", specifier = ">=0.31.0" },
-    { name = "fastapi", specifier = ">=0.141.1" },
-    { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.65b0" },
-    { name = "pipeline-kafka", editable = "libs/pipeline-kafka" },
-    { name = "pydantic-settings", specifier = ">=2.15.0" },
-    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.52" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.52.4" },
 ]
 
 [[package]]

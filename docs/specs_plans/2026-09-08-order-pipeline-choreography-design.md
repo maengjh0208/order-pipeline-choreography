@@ -4,6 +4,14 @@
 - 상태: 설계 확정 (구현 착수 전)
 - 선행 프로젝트: [`../order-pipeline`](../../../order-pipeline) — 같은 도메인을 Saga Orchestration으로 구현
 
+### 개정 이력
+
+- 2026-09-09: **`order-query-service` 삭제 (CQRS 읽기 분리 철회).** order-service가 이미 모든
+  단계 이벤트를 구독해 자기 Order 테이블에 전체 상태를 투영하므로, 별도 읽기 모델 서비스·DB는
+  중복이었다 (YAGNI). order-service가 `POST /orders` + 조회(`GET /orders`, `GET /orders/{id}`)를
+  자기 DB에서 함께 제공한다. CQRS 읽기 분리는 필요가 실제로 생기면 (리치 필터/페이지네이션을
+  비정규화 테이블에서, 읽기 트래픽을 write DB에서 분리) 별도 슬라이스로 추가한다.
+
 ---
 
 ## 1. 배경과 목표
@@ -48,14 +56,14 @@
 
 | 서비스 | 책임 | DB | HTTP |
 |---|---|---|---|
-| `order-service` | Order 애그리거트(쓰기 모델), 주문 생명주기 상태 머신 | `order-postgres` | `POST /orders` |
+| `order-service` | Order 애그리거트, 주문 생명주기 상태 머신, 주문 조회 | `order-postgres` | `POST /orders`, `GET /orders`, `GET /orders/{id}` |
 | `inventory-service` | 재고 예약 / 해제 | `inventory-postgres` | `GET /products` |
 | `payment-service` | 결제 시도 + 재시도 (`payment_jobs`) | `payment-postgres` | — |
 | `notification-service` | 알림 발송 (로그 mock) | `notification-postgres` | — |
-| `order-query-service` | 읽기 모델(`order_view`) 투영, 주문 조회 | `order-query-postgres` | `GET /orders`, `GET /orders/{id}` |
 
-- **CQRS**: 쓰기(`POST /orders`)는 `order-service`, 읽기(`GET /orders`)는 `order-query-service`.
-  `order-service`는 권위 있는 Order 상태 머신을, `order-query-service`는 조회 최적화 투영을 소유한다.
+- `order-service`는 자기 Order 테이블에 전체 상태를 유지한다. `POST /orders`로 주문을 만들고,
+  이후 단계 이벤트(`inventory.reserved`, `payment.completed`, ...)를 구독해 상태를 전진시키며,
+  조회(`GET /orders`)도 같은 테이블에서 제공한다. 별도 읽기 모델 서비스는 두지 않는다 (개정 이력 참조).
 - `notification-service`도 멱등 컨슈머가 필요하므로 inbox 테이블용 DB를 가진다 (알림 2번 발송 금지).
 - **서비스 간 비즈니스 코드 공유 없음.** 공유하는 것은 도메인 지식이 0인 전송 라이브러리
   `pipeline-kafka`(§7.2)뿐이다.
@@ -133,31 +141,27 @@ sequenceDiagram
     participant I as inventory-service
     participant P as payment-service
     participant N as notification-service
-    participant Q as order-query-service
 
     C->>O: POST /orders
     O->>O: Order(PLACED) + outbox(order.placed) [1 tx]
     O-->>I: order.placed
-    O-->>Q: order.placed
     I->>I: reserve() + outbox(inventory.reserved) [1 tx]
     I-->>O: inventory.reserved
     I-->>P: inventory.reserved
-    I-->>Q: inventory.reserved
     O->>O: status = RESERVED
     P->>P: payment_jobs insert(PENDING)
     Note over P: payment poller: provider 호출 성공
     P->>P: outbox(payment.completed)
     P-->>O: payment.completed
     P-->>N: payment.completed
-    P-->>Q: payment.completed
     O->>O: status = PAID
     N->>N: send() + outbox(notification.sent) [1 tx]
     N-->>O: notification.sent
-    N-->>Q: notification.sent
     O->>O: status = COMPLETED
 ```
 
-`order-query-service`는 모든 토픽을 구독해서 `order_view`를 upsert한다 (상태 우선순위 가드, §5.6).
+`order-service`가 자기 단계 이벤트 외에 다른 서비스의 이벤트도 구독해 Order 상태를 전진시킨다
+(상태 전이 순서 가드, §5.8). `GET /orders/{id}`는 이 테이블을 읽는다.
 
 ### 4.2 재고 부족 (보상 불필요)
 
@@ -301,13 +305,13 @@ CREATE TABLE payment_jobs (
 - "메시지 수신"과 "결제 N회 시도"를 분리 → 재시도가 컨슈머를 블로킹하지 않고, 백오프가
   도메인 개념이 되며, 테스트가 쉽다.
 
-### 5.8 읽기 모델 순서 가드
+### 5.8 상태 전이 순서 가드
 
-`order-query-service`는 4개 토픽을 구독하므로 같은 `order_id`라도 애그리거트가 다르면 이벤트가
-컨슈머에서 교차 도착할 수 있다.
+`order-service`는 여러 토픽(`inventory.events`, `payment.events`, `notification.events`)을 구독하므로
+같은 `order_id`라도 애그리거트가 다르면 이벤트가 컨슈머에서 교차 도착할 수 있다.
 
 - 상태 우선순위: `PLACED(0) < RESERVED(1) < PAID(2) < COMPLETED(3)`, `CANCELLED(99, 종결)`
-- upsert 시 들어온 상태의 우선순위가 현재 이하이면 무시한다 (늦게 도착한 이벤트).
+- 상태 전이 시 들어온 상태의 우선순위가 현재 이하이면 무시한다 (늦게 도착한 이벤트).
 - 표시용 타임스탬프는 이벤트의 `occurred_at`을 쓴다.
 - 가정: **준선형 사가** (분기 최소). `# ponytail: 상태 우선순위 가드, 사가가 복잡해지면 이벤트 소싱 fold로`
 
@@ -345,7 +349,7 @@ Grafana가 단일 창. 서비스는 백엔드를 모르고 OTLP 엔드포인트�
 | `outbox_relay_lag_seconds` | gauge | `service` (now − 가장 오래된 미발행 `created_at`) |
 | `payment_attempts_total` | counter | `result` |
 | `dlq_messages_total` | counter | `topic` |
-| `order_e2e_duration_seconds` | histogram | — (`order-query`가 종결 전이 시 방출) |
+| `order_e2e_duration_seconds` | histogram | — (`order-service`가 종결 전이 시 방출) |
 
 컨슈머 lag은 Collector의 `kafkametrics` receiver로 수집.
 
@@ -380,8 +384,7 @@ order-pipeline-choreography/
 │   ├── order-service/
 │   ├── inventory-service/
 │   ├── payment-service/
-│   ├── notification-service/
-│   └── order-query-service/
+│   └── notification-service/
 ├── observability/
 │   ├── otel-collector/         # collector config
 │   ├── prometheus/
@@ -456,8 +459,8 @@ services/<service>/src/<service>/
 | 2 | tx 커밋 후 오프셋 커밋 전 크래시 | 재처리, 이중 효과·유실 없음 |
 | 3 | outbox 폴러 produce 후 mark 전 크래시 | 이벤트 재발행, 하류 dedup |
 | 4 | 리밸런스 (컨슈머 2개, 1개 kill) | `on_revoke` 커밋, 유실·중복 없음 |
-| 5 | 해피패스 E2E | `order_view.status = COMPLETED` |
-| 6 | 결제 3회 실패 | `inventory.released`, `status = CANCELLED` |
+| 5 | 해피패스 E2E | `order.status = COMPLETED` |
+| 6 | 결제 3회 실패 | `inventory.released`, `order.status = CANCELLED` |
 
 ### Mock payment provider
 
@@ -476,8 +479,8 @@ services/<service>/src/<service>/
 
 | Slice | 내용 |
 |---|---|
-| **0** | **워킹 스켈레톤.** `order-service POST /orders` → outbox → 폴러 → `order.placed` → `order-query` 소비 → `GET /orders/{id}` = PLACED. inbox, outbox, 수동 커밋, UnitOfWork, OTel 트레이싱(Collector + Tempo) 전부 관통. 검증: 트레이스에 produce→consume 스팬 체인. |
-| **1** | `inventory-service`가 `order.placed`에 반응 → `inventory.reserved` / `inventory.reservation_rejected`. `order-service` 상태 전진. |
+| **0** | **워킹 스켈레톤 (발행 경로).** `order-service POST /orders` → Order(PLACED) + outbox [1 tx] → 폴러 → `order.events`로 `order.placed` 발행. `GET /orders/{id}` = PLACED (자기 DB, 동기). outbox, 수동 오프셋 없음(아직 컨슈머 없음), UnitOfWork, OTel 트레이싱(Collector + Tempo), alembic, docker-compose 관통. 검증: GET이 PLACED, `order.placed`가 Kafka에 도착, produce 스팬이 트레이스에 보임. **inbox·컨슈머 런타임은 Slice 1로.** |
+| **1** | 컨슈머 런타임 + inbox 도입. `inventory-service`가 `order.placed`에 반응 → `inventory.reserved` / `inventory.reservation_rejected`. `order-service`가 `inventory.events`를 구독해 상태 전진. 여기서 produce→consume 트레이스 체인이 처음 이어짐. |
 | **2** | `payment-service` — `payment_jobs` + 폴러 + 지수 백오프 → `payment.completed` / `payment.failed`, `payment.dlq` 적재. |
 | **3** | 보상 + 완료 — `order.cancelled` → `inventory` release, `notification-service` → `notification.sent` → COMPLETED. |
 | **4** | 관측성 풀 — OTel 메트릭 → Prometheus, 로그 → Promtail → Loki, Grafana 대시보드 3개, exemplar / derived field 상관. |
@@ -489,7 +492,7 @@ services/<service>/src/<service>/
 
 ### 가정
 
-- **준선형 사가.** 읽기 모델의 상태 우선순위 가드(§5.8)가 이 가정에 의존한다. 분기가 많아지면
+- **준선형 사가.** order-service의 상태 전이 순서 가드(§5.8)가 이 가정에 의존한다. 분기가 많아지면
   이벤트 소싱 fold를 재고한다.
 - 카드번호를 `order.placed` payload에 평문으로 싣는다. **학습 단순화** — 실무는 PSP 토큰화,
   이벤트에 절대 싣지 않는다. `# ponytail:` 주석으로 표시.

@@ -1,0 +1,68 @@
+name: order-pipeline-choreography  # 프로젝트 이름 (default: directory 명칭, 그래도 명시하는게 낫다)
+
+services:
+  kafka:
+    image: apache/kafka:3.9.1
+    ports:
+      - "9092:9092"
+    environment: # Kafka는 여러 리스너(수신 소켓)를 열 수 있고, 접속하는 쪽 위치에 따라 다른 걸 쓴다.
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller # Kraft 모드. 한 노드가 브로커(메시지 처리) + 컨트롤러(메타데이터 관리) 겸임. Zookeeper 없음.
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      # KAFKA_LISTENERS = "이 포트들에서 듣겠다" 라는 뜻
+      # PLAINTEXT: 19092포트. 같은 docker 네트워크에 있는 다른 컨테이너가 쓴다. 호스트명은 kafka
+      # PLAINTEXT_HOST: 9092포트. 호스트 localhost와 포트 매핑 9092:9092
+      # CONTROLLER: 29093포트. KRaft 모드(Zookeeper 없는 최신 Kafka)에서는 클러스터의 메타데이터(어떤 토픽이 있고, 파티션이 어느 브로커에 있고, 리더가 누군지 등)를 controller quorum 이라는 별도 Raft 합의 그룹이 관리한다. Controller 리스너는 브로커들이 이 메타데이터를 주고받기 위해 서로 통신하는 전용 포트이다.
+      KAFKA_LISTENERS: CONTROLLER://:29093,PLAINTEXT://:19092,PLAINTEXT_HOST://:9092
+      # KAFKA_ADVERTISED_LISTENERS = 클라이언트에게, "나한테 접속하려면 이 주소를 써라" 라고 알려주는 것.
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:19092,PLAINTEXT_HOST://localhost:9092
+      # KAFKA_INTER_BROKER_LISTENER_NAME = 브로커끼리(지금은 1대라 무의미하지만 필수 설정) PLAINTEXT 사용.
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      CLUSTER_ID: 4L6g3nShT-eMCtK--X86sw
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false" # 의도적으로 한 것. 존재하지 않는 토픽을 구독/발행해도 자동 생성 안함. 처음에 없는 토픽을 구독하려 할 때, UNKNOWN_TOPIC_OR_PART 발생하고 librdkafka가 5분간 재확인을 안함. 토픽은 kafka-init이 명시적으로 생성하게 할 것임.
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+    volumes:
+      - kafka_data:/tmp/kraft-combined-logs
+    healthcheck:
+      test: [ "CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  kafka-ui:
+    image: kafbat/kafka-ui:v1.1.0
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:19092
+      DYNAMIC_CONFIG_ENABLED: "true"
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  order-postgres:
+    image: postgres:16
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: order
+      POSTGRES_PASSWORD: order
+      POSTGRES_DB: order
+    volumes:
+      - order_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U order -d order" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  kafka_data:
+  order_pg_data:
