@@ -1,0 +1,26 @@
+[project]
+name = "order-service"
+version = "0.1.0"
+description = "Order aggregate write model — publishes order lifecycle events"
+readme = "README.md"
+authors = [
+    { name = "maengjh", email = "juhee.bda@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.19.2",
+    "asyncpg>=0.31.0",
+    "fastapi>=0.141.1",
+    "opentelemetry-instrumentation-fastapi>=0.65b0",
+    "pipeline-kafka",
+    "pydantic-settings>=2.15.0",
+    "sqlalchemy[asyncio]>=2.0.52",
+    "uvicorn[standard]>=0.52.4",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+pipeline-kafka = { workspace = true }
