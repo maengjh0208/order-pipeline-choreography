@@ -27,8 +27,6 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false" # 의도적으로 한 것. 존재하지 않는 토픽을 구독/발행해도 자동 생성 안함. 처음에 없는 토픽을 구독하려 할 때, UNKNOWN_TOPIC_OR_PART 발생하고 librdkafka가 5분간 재확인을 안함. 토픽은 kafka-init이 명시적으로 생성하게 할 것임.
       KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
-    volumes:
-      - kafka_data:/tmp/kraft-combined-logs
     healthcheck:
       test: [ "CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1" ]
       interval: 10s
@@ -64,5 +62,4 @@ services:
       retries: 5
 
 volumes:
-  kafka_data:
   order_pg_data:
