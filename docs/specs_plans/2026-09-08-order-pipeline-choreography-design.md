@@ -117,7 +117,7 @@
 
 | 이벤트 | payload |
 |---|---|
-| `order.placed` | `{ order_id, items: [{sku, qty}], card_number, amount }` |
+| `order.placed` | `{ order_id, items: [{sku, qty, unit_price}], card_number, amount }` (unit_price·amount는 원 단위 정수) |
 | `inventory.reserved` | `{ order_id }` |
 | `inventory.reservation_rejected` | `{ order_id, reason }` |
 | `inventory.released` | `{ order_id }` |
@@ -194,6 +194,22 @@ sequenceDiagram
 
 재고 부족과 결제 실패는 **비대칭**이다. 재고 부족은 재시도해도 결과가 같으므로 즉시 취소하고,
 결제 실패만 일시적 오류로 보고 재시도 대상으로 삼는다 (선행 프로젝트 설계 계승).
+
+### 4.4 가격 검증 (Slice 1+)
+
+사용자가 주문 페이지에 오래 머문 뒤 결제하면 클라이언트가 보낸 가격이 낡을 수 있다. 처리:
+
+- 클라이언트는 `items[].unit_price`(주문 시점에 본 단가)를 함께 보낸다.
+- `order-service`가 `POST /orders` 시점에 **동기로** `inventory-service GET /products`를 호출해
+  현재가를 조회하고 서버 총액을 계산한다.
+  - `클라 총액 ≥ 서버 총액` → 통과, 서버 총액으로 청구
+  - `클라 총액 < 서버 총액` (인상됨) → `409` + 새 단가·총액 반환, 클라가 재확인 후 재제출
+- 검증을 통과한 뒤에만 `order.placed`를 발행하며 `amount`·`unit_price`는 **서버 값**(권위)으로 채운다.
+- 가격은 `inventory-service`의 `products` 테이블에 `price` 컬럼으로 둔다 (4서비스 규모의 용인되는
+  관심사 혼합. 진짜 catalog 서비스 분리는 범위 밖).
+- **동기 409**를 쓰는 이유: 가격 불일치는 주문 생성 전에 알 수 있다. saga로 만들고-취소하는 것보다
+  주문을 아예 안 만드는 게 낫다.
+- Slice 0에서는 검증 없이 `amount = Σ(qty × unit_price)`만 계산한다 (`# ponytail:` 표시).
 
 ---
 
