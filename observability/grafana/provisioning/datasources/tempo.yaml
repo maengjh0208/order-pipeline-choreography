@@ -1,0 +1,9 @@
+apiVersion: 1
+
+datasources:
+  - name: Tempo # Grafana UI에 표시될 이름.
+    type: tempo # 데이터 소스 종류. Grafana에 Tempo 플러그인 내장.
+    uid: tempo # 고정 식별자. 대시보드 JSON이나, trace <-> log 링크에서 이 uid로 소스를 참조한다. 명시 안하면 랜덤 생서되서 나중에 참조가 깨짐.
+    url: http://tempo:3200
+    access: proxy # 브라우저 -> grafana 백엔드 (localhost:3000/api/datasources/proxy/...) -> http://tempo:3200 -> Tempo. grafana 서버가 Tempo에 요청 (브라우저가 요청 보내는거 아님)
+    isDefault: true # Explore 화면 기본 소스.

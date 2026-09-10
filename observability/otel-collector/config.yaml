@@ -1,0 +1,25 @@
+receivers:
+  otlp:
+    protocols: # receiveres.otlp.protocols : 서비스로부터 OTLP push를 받는 입구. gRPC 4317 + HTTP 4318 둘 다 연다.
+      grpc:
+        endpoint: 0.0.0.0:4317 # 0.0.0.0 필수. 다른 컨테이너에서 오는 연결을 받으려면 필요함. 기본이 localhost라서 명시 안해주면 컨테이너 밖 연결을 거부한다.
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: { } # 스팬을 버퍼에 모아서 배치로 송출한다. (네트워크 호출 수 줄임). {} = 기본값 (8192 스팬 또는 200ms 마다 flush)
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317 # exporters.otlp/tempo : Tempo의 OTLP gRPC 수신기(tempo:4317)로 전달.
+    tls:
+      insecure: true
+  debug: # 스팬 요약을 collector 자기 stout에 출력. docker compose logs otel-collector로 스팬 도착을 눈으로 확인하는 용도.
+    verbosity: basic # 건수, 리소스 정도만.
+
+service:
+  pipelines:
+    traces: # services.pipelines.traces : otlp로 받아서 -> batch로 가공 -> tempo와 debug로 내보낸다.
+      receivers: [ otlp ]
+      processors: [ batch ]
+      exporters: [ otlp/tempo, debug ]
