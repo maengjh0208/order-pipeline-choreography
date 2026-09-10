@@ -45,6 +45,17 @@ services:
       kafka:
         condition: service_healthy
 
+  # kafka 토픽 추가용
+  kafka-init:
+    image: apache/kafka:3.9.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/scripts:ro
+    entrypoint: [ "/bin/sh", "/scripts/create-topics.sh" ]  # 기본 entrypoint는 브로커를 띄우는건데, 그걸 스크립트 실행으로 오버라이드
+    restart: "no"  # 종료해도 재시작 안함 (기본값이지만 명시적으로 했음)
+
   order-postgres:
     image: postgres:16
     ports:
