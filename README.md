@@ -176,8 +176,10 @@ Grafana가 단일 창. 한 주문의 `order.placed → inventory.reserved → pa
 |---|---|
 | 1. uv workspace 뼈대 | ✅ |
 | 2. docker-compose 인프라 (kafka, kafka-ui, postgres, tempo, otel-collector, grafana) | ✅ |
-| 3. `contracts/order.placed.json` | ▶ 진행 중 |
-| 4–13. pipeline-kafka + order-service (envelope, outbox, 도메인, FastAPI, alembic ...) | |
+| 3. `contracts/order.placed.json` | ✅ |
+| 4. pipeline-kafka: envelope 모델 + 직렬화 | ✅ |
+| 5. pipeline-kafka: OTel 배선 | ▶ 진행 중 |
+| 6–13. pipeline-kafka(producer, outbox) + order-service (도메인, FastAPI, alembic ...) | |
 | 14. 통합 테스트 | |
 
 이후 Slice 1(컨슈머 + inventory) → 2(payment) → 3(보상 + notification) → 4(관측성 풀) → 5(크래시 주입 테스트).
