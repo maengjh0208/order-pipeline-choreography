@@ -28,3 +28,6 @@ testpaths = ["tests"]
 
 [tool.uv.sources]
 pipeline-kafka = { workspace = true }
+
+[tool.ruff]
+line-length = 100

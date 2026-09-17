@@ -39,7 +39,5 @@ def test_to_kafka_shape():
 
 
 def test_round_trip():
-    envelope = Envelope.new(
-        "order.placed", "order_1", "order-service", {"sku": "A", "qty": 2}
-    )
+    envelope = Envelope.new("order.placed", "order_1", "order-service", {"sku": "A", "qty": 2})
     assert from_kafka(to_kafka(envelope).value) == envelope
