@@ -1,4 +1,5 @@
 from pipeline_kafka.envelope import Envelope, KafkaRecord, from_kafka, to_kafka
+from pipeline_kafka.publisher import KafkaPublisher
 from pipeline_kafka.telemetry import (
     extract_context,
     inject_traceparent,
@@ -7,6 +8,7 @@ from pipeline_kafka.telemetry import (
 
 __all__ = [
     "Envelope",
+    "KafkaPublisher",
     "KafkaRecord",
     "extract_context",
     "from_kafka",

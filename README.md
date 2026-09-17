@@ -170,7 +170,7 @@ Grafana가 단일 창. 한 주문의 `order.placed → inventory.reserved → pa
 
 ## 진행 상태
 
-**Slice 0 — 워킹 스켈레톤 (발행 경로).** 14개 덩어리 중 2개 완료.
+**Slice 0 — 워킹 스켈레톤 (발행 경로).** 14개 덩어리 중 6개 완료.
 
 | 덩어리 | 상태 |
 |---|---|
@@ -179,8 +179,9 @@ Grafana가 단일 창. 한 주문의 `order.placed → inventory.reserved → pa
 | 3. `contracts/order.placed.json` | ✅ |
 | 4. pipeline-kafka: envelope 모델 + 직렬화 | ✅ |
 | 5. pipeline-kafka: OTel 배선 (트레이스 전파) | ✅ |
-| 6. pipeline-kafka: producer 래퍼 | ▶ 진행 중 |
-| 7–13. pipeline-kafka(outbox) + order-service (도메인, FastAPI, alembic ...) | |
+| 6. pipeline-kafka: producer 래퍼 (`KafkaPublisher`) | ✅ |
+| 7. pipeline-kafka: outbox | ▶ 진행 중 |
+| 8–13. order-service (도메인, FastAPI, alembic ...) | |
 | 14. 통합 테스트 | |
 
 이후 Slice 1(컨슈머 + inventory) → 2(payment) → 3(보상 + notification) → 4(관측성 풀) → 5(크래시 주입 테스트).

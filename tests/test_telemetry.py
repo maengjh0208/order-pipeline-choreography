@@ -20,5 +20,11 @@ def test_inject_extract_links_parent_and_child_spans():
         pass
 
     spans = {s.name: s for s in exporter.get_finished_spans()}
-    assert spans["consume order.placed"].context.trace_id == spans["produce order.placed"].context.trace_id
-    assert spans["consume order.placed"].parent.span_id == spans["produce order.placed"].context.span_id
+    assert (
+        spans["consume order.placed"].context.trace_id
+        == spans["produce order.placed"].context.trace_id
+    )
+    assert (
+        spans["consume order.placed"].parent.span_id
+        == spans["produce order.placed"].context.span_id
+    )

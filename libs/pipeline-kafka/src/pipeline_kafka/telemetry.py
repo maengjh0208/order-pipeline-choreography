@@ -20,7 +20,8 @@ def setup_telemetry(service_name: str, otlp_endpoint: str) -> None:
 
 def inject_traceparent(headers: list[tuple[str, bytes]]) -> list[tuple[str, bytes]]:
     carrier: dict[str, str] = {}
-    propagate.inject(carrier)  # 현재 활성 스팬의 컨텍스트를 carrier에 씀. (예: carrier['traceparent'] = "1234-A1")
+    # 현재 활성 스팬의 컨텍스트를 carrier에 씀. (예: carrier['traceparent'] = "1234-A1")
+    propagate.inject(carrier)
     injected = [(k, v.encode("utf-8")) for k, v in carrier.items()]
     return [*headers, *injected]
 
