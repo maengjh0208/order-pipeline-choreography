@@ -66,6 +66,7 @@ services:
       POSTGRES_DB: order
     volumes:
       - order_pg_data:/var/lib/postgresql/data
+      - ./scripts/postgres-init.sql:/docker-entrypoint-initdb.d/postgres-init.sql:ro  # /docker-entrypoint-initdb.d/ 안의 .sql/.sh를 컨테이너 첫 부팅 시 한 번만 실행 (이미 볼륨에 데이터가 있으면 안 돌아가니까 볼륨 삭제 후 진행해야 함)
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U order -d order" ]
       interval: 5s

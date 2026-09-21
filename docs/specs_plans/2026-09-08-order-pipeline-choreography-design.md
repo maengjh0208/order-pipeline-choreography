@@ -233,7 +233,7 @@ consumer.poll()
  → BEGIN tx
      INSERT inbox(message_id, consumer_group)     -- PK 충돌 → 중복, 도메인 skip
      도메인 로직 (repo write)
-     INSERT outbox(...)                            -- 결과 이벤트
+     INSERT outbox_message(...)                     -- 결과 이벤트
    COMMIT tx
  → consumer.commit(message)                        -- 오프셋, tx 밖
 ```
@@ -268,7 +268,7 @@ CREATE TABLE inbox (
 ### 5.5 Transactional outbox
 
 ```sql
-CREATE TABLE outbox (
+CREATE TABLE outbox_message (
     id             BIGSERIAL   PRIMARY KEY,
     topic          TEXT        NOT NULL,
     key            TEXT        NOT NULL,
@@ -282,7 +282,7 @@ CREATE TABLE outbox (
 
 - **폴링 발행기.** 서비스마다 백그라운드 asyncio 태스크가:
   ```sql
-  SELECT * FROM outbox
+  SELECT * FROM outbox_message
    WHERE published_at IS NULL AND next_attempt_at <= now()
    ORDER BY id LIMIT :batch
    FOR UPDATE SKIP LOCKED
