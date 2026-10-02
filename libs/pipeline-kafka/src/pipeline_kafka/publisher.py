@@ -35,6 +35,7 @@ class KafkaPublisher:
         - publish()는 librdkafka 로컬 큐에 넣기만 함.
         - flush()는 그 큐의 메시지가 브로커까지 전달될때까지 블로킹 대기.
         - flush() 자체에는 시간 제한이 없음. 큐가 빌 때까지 기다림. 그런데 큐는 결국 비긴 함. 이유는 메시지마다 기본 5분짜리 수명이 있기 때문.
+        - 그래서 FLUSH_TIMEOUT_SECONDS로로 상한을 둠. 상한 안에 못 끝나면 반환값 > 0.
         - 메시지는 성공하면 큐에서 빠지고, 시간 내에 성공 못 하면 실패로 확정되고 큐에서 빠짐.
         """
         remaining = self._producer.flush(timeout=FLUSH_TIMEOUT_SECONDS)
