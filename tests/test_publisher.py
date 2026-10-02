@@ -4,8 +4,22 @@ import pytest
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from pipeline_kafka import Envelope, KafkaDeliveryError, KafkaPublisher
+from pipeline_kafka import KafkaDeliveryError, KafkaPublisher
 from pipeline_kafka.publisher import FLUSH_TIMEOUT_SECONDS
+
+from tests.helpers import make_envelope
+
+
+def fail_delivery_on_flush(fake_producer: MagicMock) -> None:
+    """flush() 도중 on_delivery로 전달 실패를 알리는 producer로 만든다. (flush 반환값은 0)"""
+
+    def failing_flush(timeout: float) -> int:
+        # 진짜 librdkafka 흉내 : flush 도중 on_delivery 콜백으로 실패 알리고, 메시지는 끝났으니 큐는 비어서 0을 반환함
+        on_delivery = fake_producer.produce.call_args.kwargs["on_delivery"]
+        on_delivery("MSG_SIZE_TOO_LARGE", None)
+        return 0
+
+    fake_producer.flush.side_effect = failing_flush
 
 
 def test_publish_calls_producer_produce_envelope_data():
@@ -17,12 +31,7 @@ def test_publish_calls_producer_produce_envelope_data():
     fake_producer = MagicMock()
     publisher = KafkaPublisher(fake_producer, tracer)
 
-    envelope = Envelope.new(
-        event_type="order.placed",
-        correlation_id="order_1",
-        producer="order-service",
-        payload={"sku": "A"},
-    )
+    envelope = make_envelope()
     publisher.publish("order.events", envelope)
 
     fake_producer.produce.assert_called_once()  # produce()가 정확히 한 번 불렸는지 확인
@@ -43,13 +52,7 @@ def test_publish_starts_produce_span_and_injects_traceparent():
     fake_producer = MagicMock()
     publisher = KafkaPublisher(fake_producer, tracer)
 
-    envelope = Envelope.new(
-        event_type="order.placed",
-        correlation_id="order_1",
-        producer="order-service",
-        payload={"sku": "A"},
-    )
-    publisher.publish("order.events", envelope)
+    publisher.publish("order.events", make_envelope())
 
     spans = exporter.get_finished_spans()
     assert len(spans) == 1
@@ -79,3 +82,34 @@ def test_flush_raises_when_messages_remain_after_timeout():
 
     with pytest.raises(KafkaDeliveryError):
         publisher.flush()
+
+
+def test_flush_raises_when_delivery_failed():
+    fake_producer = MagicMock()
+
+    fail_delivery_on_flush(fake_producer)
+
+    publisher = KafkaPublisher(fake_producer, TracerProvider().get_tracer(__name__))
+    publisher.publish("order.events", make_envelope())
+
+    with pytest.raises(KafkaDeliveryError):
+        publisher.flush()
+
+
+def test_flush_succeeds_after_previous_delivery_failure():
+    fake_producer = MagicMock()
+
+    fail_delivery_on_flush(fake_producer)
+
+    publisher = KafkaPublisher(fake_producer, TracerProvider().get_tracer(__name__))
+    publisher.publish("order.events", make_envelope())
+
+    with pytest.raises(KafkaDeliveryError):
+        publisher.flush()
+
+    # 2번째 배치: Kafka 정상. 새 에러 없음
+    fake_producer.flush.side_effect = None
+    fake_producer.flush.return_value = 0
+
+    # 이전 실패가 남아 있지 않다면 raise 하지 않아야 함.
+    publisher.flush()

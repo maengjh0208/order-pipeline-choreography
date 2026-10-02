@@ -1,17 +1,9 @@
 from unittest.mock import ANY, MagicMock, call
 
-from pipeline_kafka import Envelope
 from pipeline_kafka.outbox import OutboxMessage, OutboxPoller, enqueue
 from sqlalchemy import select
 
-
-def make_envelope() -> Envelope:
-    return Envelope.new(
-        event_type="order.placed",
-        correlation_id="order_1",
-        producer="order-service",
-        payload={"sku": "A"},
-    )
+from tests.helpers import make_envelope
 
 
 async def test_enqueue_inserts_a_row(session_factory):
