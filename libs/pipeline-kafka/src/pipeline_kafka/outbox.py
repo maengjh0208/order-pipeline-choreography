@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, String, func
+from sqlalchemy import BigInteger, DateTime, String, func, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -44,3 +44,28 @@ async def enqueue(session: AsyncSession, topic: str, envelope: Envelope) -> None
             payload=envelope.model_dump(mode="json"),
         )
     )
+
+
+class OutboxPoller:
+    def __init__(self, session_factory, publisher, batch: int = 100):
+        self._session_factory = session_factory
+        self._publisher = publisher
+        self._batch = batch
+
+    async def poll_once(self) -> None:
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(OutboxMessage).where(OutboxMessage.published_at.is_(None)).limit(self._batch)
+            )
+            rows = result.scalars().all()
+
+            # 순서: kafka publish -> kafka flush -> db mark -> db commit (at-least-once)
+            for row in rows:
+                # JSONB에서 꺼낸 dict을 Envelope로 복원 (문자열 UUID/datetime -> 원래 타입으로)
+                envelope = Envelope.model_validate(row.payload)
+                self._publisher.publish(topic=row.topic, envelope=envelope)
+                row.published_at = func.now()
+
+            # flush() 실패 시 예외 -> commit X (published_at 롤백)
+            self._publisher.flush()
+            await session.commit()

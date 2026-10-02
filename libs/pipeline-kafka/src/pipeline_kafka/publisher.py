@@ -3,6 +3,12 @@ from opentelemetry.trace import Tracer
 from pipeline_kafka.envelope import Envelope, to_kafka
 from pipeline_kafka.telemetry import inject_traceparent
 
+FLUSH_TIMEOUT_SECONDS = 10.0
+
+
+class KafkaDeliveryError(Exception):
+    """Kafka 브로커로 메시지 전달이 확인되지 않음 (실패 또는 timeout)"""
+
 
 class KafkaPublisher:
     def __init__(self, producer, tracer: Tracer):
@@ -23,4 +29,14 @@ class KafkaPublisher:
                 value=record.value,
                 headers=headers,
             )
-            # flush는 여기서 안함 - 배치 끝에서 poller가 한번에 처리
+
+    def flush(self) -> None:
+        """
+        - publish()는 librdkafka 로컬 큐에 넣기만 함.
+        - flush()는 그 큐의 메시지가 브로커까지 전달될때까지 블로킹 대기.
+        - flush() 자체에는 시간 제한이 없음. 큐가 빌 때까지 기다림. 그런데 큐는 결국 비긴 함. 이유는 메시지마다 기본 5분짜리 수명이 있기 때문.
+        - 메시지는 성공하면 큐에서 빠지고, 시간 내에 성공 못 하면 실패로 확정되고 큐에서 빠짐.
+        """
+        remaining = self._producer.flush(timeout=FLUSH_TIMEOUT_SECONDS)
+        if remaining > 0:
+            raise KafkaDeliveryError(f"{remaining} message(s) not delivered")
