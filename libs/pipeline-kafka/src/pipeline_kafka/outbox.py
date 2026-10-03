@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 
 from sqlalchemy import BigInteger, DateTime, String, func, select
@@ -67,5 +68,6 @@ class OutboxPoller:
                 row.published_at = func.now()
 
             # flush() 실패 시 예외 -> commit X (published_at 롤백)
-            self._publisher.flush()
+            # flush는 동기 블로킹(최대 FLUSH_TIMEOUT_SECONDS) -> 별도 스레드에서 실행해서 이벤트루프(같은 루프의 API 요청 처리)를 막지 않도록.
+            await asyncio.to_thread(self._publisher.flush)
             await session.commit()
